@@ -5,4 +5,4 @@
 using namespace std;
 
 //promises
-Node* parse(vector<Token> lexer_tokens);
+Node* parse(vector<Token> lexer_tokens, vector<Node*> &errors);

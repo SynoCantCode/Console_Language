@@ -48,6 +48,14 @@ void print_errors(const string &path, const vector<Token> &tokens) {
 }
 
 
+//print each mistake the parser found with its file and line
+void print_parse_errors(const string &path, const vector<Node*> &errors) {
+    for (Node* error : errors) {
+        cerr << path << ":" << error->line << ": " << error->text << endl;
+    }
+}
+
+
 // printing
 
 //print one token, its line, kind, which keyword, and text
@@ -72,17 +80,34 @@ void print_tokens(const vector<Token> &tokens) {
 // the compiler
 
 int main(int argc, char **argv) {
-    //langc FILE.lang prints the tokens, langc --ast FILE.lang prints the tree
-    bool show_tree = false;
-    string path;
-    if (argc == 2) {
-        path = argv[1];
-    } else if (argc == 3 && string(argv[1]) == "--ast") {
-        show_tree = true;
-        path = argv[2];
-    } else {
-        cerr << "usage: langc [--ast] FILE.lang" << endl;
+    //langc [options] FILE.lang, the file is always the last word, the options go in between
+    if (argc < 2) {
+        cerr << "usage: langc [--tokens] [--ast] FILE.lang" << endl;
         return 1;
+    }
+
+    //the last word is the file
+    string path = argv[argc - 1];
+    if (path.substr(0, 2) == "--") {
+        cerr << "usage: langc [--tokens] [--ast] FILE.lang" << endl;
+        return 1;
+    }
+
+    //which things to print, all off until an option turns them on
+    bool show_tokens = false;
+    bool show_tree = false;
+
+    //every word between the program's name and the file is an option
+    for (int i = 1; i < argc - 1; i++) {
+        string option = argv[i];
+        if (option == "--tokens") {
+            show_tokens = true;
+        } else if (option == "--ast") {
+            show_tree = true;
+        } else {
+            cerr << "langc: unknown option " << option << endl;
+            return 1;
+        }
     }
 
     string source;
@@ -102,12 +127,22 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    //step 3, no mistakes, so print the tree or the tokens
-    if (show_tree == true) {
-        Node* program = parse(tokens);
-        print_tree(program, 0);
-        return 0;
+    //step 3, print the tokens if asked
+    if (show_tokens == true) {
+        print_tokens(tokens);
     }
-    print_tokens(tokens);
+
+    //step 4, read the tokens into a tree, stop if the parser found mistakes
+    vector<Node*> errors;
+    Node* program = parse(tokens, errors);
+    if (errors.size() > 0) {
+        print_parse_errors(path, errors);
+        return 1;
+    }
+
+    //step 5, print the tree if asked
+    if (show_tree == true) {
+        print_tree(program, 0);
+    }
     return 0;
 }

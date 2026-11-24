@@ -1,5 +1,9 @@
 #include "parser.hpp"
 
+Node* read_NNV(); //promise
+//errors
+vector<Node*> errors_found;
+
 // the list of tokens the parser is reading, and the finger
 vector<Token> tokens;
 size_t position = 0;
@@ -117,7 +121,7 @@ int operator_strength(Token token) {
 // reads a whole value with operators, like hp - 2 * 3, and gives back the top node of its tree
 Node* read_expression(int limit) {
     //the first value
-    Node* left_side = read_number_or_name();
+        Node* left_side = read_NNV(); //new name and look same old guy we know and love...
     if (left_side->kind == NodeKind::Error) {
         //pass the mistake up
         return left_side;
@@ -228,8 +232,9 @@ Node* read_statement() {
         statement = make_node(NodeKind::Error, "a line can't start with this", token.line);
     }
 
-    //a mistake leaves the finger in the middle of the line, so skip the rest of it
+    //a mistake leaves the finger in the middle of the line, so record it and skip the rest of the line
     if (statement->kind == NodeKind::Error) {
+        errors_found.push_back(statement);
         skip_to_next_line();
     }
     return statement;
@@ -247,8 +252,44 @@ Node* read_program() {
 }
 
 // the start of the parser, takes the lexer's tokens and gives back the Program node for the whole file
-Node* parse(vector<Token> lexer_tokens) {
+Node* parse(vector<Token> lexer_tokens, vector<Node*> &errors) {
     tokens = lexer_tokens;
     position = 0;
-    return read_program();
+    errors_found.clear();
+    Node* program = read_program();
+    errors = errors_found;
+    return program;
+}
+
+Node* read_NNV() { //name number value it stands for bc its too long to type
+    Token token = current_token();
+
+    //a - or not where a value should start goes on just the next value
+    if (is_symbol("-") == true || (token.kind == TokenKind::Keyword && token.keyword == KeywordKind::Not)) {
+        //step past the - or not
+        take();
+        //the one value it goes on, which can have its own - or brackets
+        Node* side = read_NNV();
+        if (side->kind == NodeKind::Error) {
+            return side;
+        }
+        return make_unary_node(token.text, side, token.line);
+    }
+
+    if (is_symbol("(") == true) {
+        //step past the (
+        take();
+        //the inside is a fresh whole expression, so every operator counts again
+        Node* inside = read_expression(0);
+        if (inside->kind == NodeKind::Error) {
+            return inside;
+        }
+        Node* problem = expect_symbol(")");
+        if (problem != nullptr) {
+            return problem;
+        }
+        //the inside's tree counts as one value
+        return inside;
+    }
+    return read_number_or_name();
 }
