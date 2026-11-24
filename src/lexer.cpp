@@ -56,14 +56,16 @@ bool inside(const string &source, size_t i) {
 //is this exact character at i
 bool character_at(const string &source, size_t i, char wanted) {
     if (inside(source, i) == false) {
-        return false; //off the end so nothing is here
+        //off the end so nothing is here
+        return false;
     }
     return source[i] == wanted;
 }
 
 //does this text start here
 bool text_at(const string &source, size_t i, const string &text) {
-    string piece = source.substr(i, text.size()); //cut out as many characters as text has
+    //cut out as many characters as text has
+    string piece = source.substr(i, text.size());
     return piece == text;
 }
 
@@ -147,7 +149,8 @@ bool decimal_point_at(const string &source, size_t i) {
         return false;
     }
     if (inside(source, i + 1) == false) {
-        return false; //the point is the last character
+        //the point is the last character
+        return false;
     }
     char after = source[i + 1];
     return is_digit(after);
@@ -175,7 +178,8 @@ bool escape_at(const string &source, size_t i) {
 
 //new line, makes a Newline token
 Token read_newline(size_t &i, int line) {
-    i++; //step past the new line
+    //step past the new line
+    i++;
     Token token = { TokenKind::Newline, "", line };
     return token;
 }
@@ -189,15 +193,19 @@ void skip_comment(const string &source, size_t &i) {
 
 //word, makes a Keyword or Name token
 Token read_word(const string &source, size_t &i, int line) {
-    size_t start = i; //where the word begins
+    //where the word begins
+    size_t start = i;
     while (word_continues_at(source, i) == true) {
         i++;
     }
     size_t length = i - start;
-    string word = source.substr(start, length); //cut it out
+    //cut it out
+    string word = source.substr(start, length);
 
-    if (is_keyword(word) == true) {                  //step 1, is it a keyword
-        KeywordKind which = keyword_kind(word);      //step 2, which keyword it is
+    //step 1, is it a keyword
+    if (is_keyword(word) == true) {
+        //step 2, which keyword it is
+        KeywordKind which = keyword_kind(word);
         Token token = { TokenKind::Keyword, word, line, which };
         return token;
     }
@@ -207,15 +215,18 @@ Token read_word(const string &source, size_t &i, int line) {
 
 //number, makes a Number token for decimal, hex, and binary numbers
 Token read_number(const string &source, size_t &i, int line) {
-    size_t start = i; //where the number begins
+    //where the number begins
+    size_t start = i;
 
     if (number_prefix_at(source, i, 'x') == true) {
-        i += 2; //step past the 0x
+        //step past the 0x
+        i += 2;
         while (hex_continues_at(source, i) == true) {
             i++;
         }
     } else if (number_prefix_at(source, i, 'b') == true) {
-        i += 2; //step past the 0b
+        //step past the 0b
+        i += 2;
         while (binary_continues_at(source, i) == true) {
             i++;
         }
@@ -225,7 +236,8 @@ Token read_number(const string &source, size_t &i, int line) {
         }
         //decimal point, only if a digit comes after it
         if (decimal_point_at(source, i) == true) {
-            i++; //step past the point
+            //step past the point
+            i++;
             while (decimal_continues_at(source, i) == true) {
                 i++;
             }
@@ -233,7 +245,8 @@ Token read_number(const string &source, size_t &i, int line) {
     }
 
     size_t length = i - start;
-    string number = source.substr(start, length); //cut it out
+    //cut it out
+    string number = source.substr(start, length);
     Token token = { TokenKind::Number, number, line };
     return token;
 }
@@ -241,19 +254,23 @@ Token read_number(const string &source, size_t &i, int line) {
 //symbol, makes a Symbol token, only call it after symbol_starts_at says yes
 Token read_symbol(const string &source, size_t &i, int line) {
     string symbol = symbol_at(source, i);
-    size_t length = symbol.size(); //one or two characters
-    i += length; //step past it
+    //one or two characters
+    size_t length = symbol.size();
+    //step past it
+    i += length;
     Token token = { TokenKind::Symbol, symbol, line };
     return token;
 }
 
 //string, makes a String token from the text between the quotes
 Token read_string(const string &source, size_t &i, int line) {
-    i++; //step past the opening quote
+    //step past the opening quote
+    i++;
     size_t start = i;
     while (quoted_continues_at(source, i, '"') == true) {
         if (escape_at(source, i) == true) {
-            i += 2; //an escape is two characters, step past both so an escaped quote doesn't end the string
+            //an escape is two characters, step past both so an escaped quote doesn't end the string
+            i += 2;
         } else {
             i++;
         }
@@ -265,8 +282,10 @@ Token read_string(const string &source, size_t &i, int line) {
     }
 
     size_t length = i - start;
-    string text = source.substr(start, length); //cut out what's between the quotes
-    i++; //step past the closing quote
+    //cut out what's between the quotes
+    string text = source.substr(start, length);
+    //step past the closing quote
+    i++;
     Token token = { TokenKind::String, text, line };
     return token;
 }
@@ -277,18 +296,22 @@ void skip_bad_character(const string &source, size_t &i) {
         i++;
     }
     if (character_at(source, i, '\'') == true) {
-        i++; //step past the closing quote
+        //step past the closing quote
+        i++;
     }
 }
 
 //character, makes a Character token from the text between the quotes
 Token read_character(const string &source, size_t &i, int line) {
-    i++; //step past the opening quote
+    //step past the opening quote
+    i++;
     size_t start = i;
     if (character_at(source, i, '\\') == true) {
-        i++; //an escape is two characters
+        //an escape is two characters
+        i++;
     }
-    i++; //the character itself
+    //the character itself
+    i++;
 
     if (character_at(source, i, '\'') == false) {
         skip_bad_character(source, i);
@@ -297,17 +320,21 @@ Token read_character(const string &source, size_t &i, int line) {
     }
 
     size_t length = i - start;
-    string text = source.substr(start, length); //cut out what's between the quotes
-    i++; //step past the closing quote
+    //cut out what's between the quotes
+    string text = source.substr(start, length);
+    //step past the closing quote
+    i++;
     Token token = { TokenKind::Character, text, line };
     return token;
 }
 
 //a character that means nothing, makes an Error token
 Token read_unknown(const string &source, size_t &i, int line) {
-    string bad = source.substr(i, 1); //the one character
+    //the one character
+    string bad = source.substr(i, 1);
     string message = "unknown character: " + bad;
-    i++; //step past it
+    //step past it
+    i++;
     Token error = { TokenKind::Error, message, line };
     return error;
 }
@@ -316,9 +343,12 @@ Token read_unknown(const string &source, size_t &i, int line) {
 // the lexer
 
 vector<Token> lex(const string &source) {
-    vector<Token> tokens; //list we fill in, empty at first
-    int line = 1; //line number of file we are on
-    size_t i = 0; //our position in source
+    //list we fill in, empty at first
+    vector<Token> tokens;
+    //line number of file we are on
+    int line = 1;
+    //our position in source
+    size_t i = 0;
 
     while (i < source.size()) {
         char c = source[i];
@@ -345,7 +375,8 @@ vector<Token> lex(const string &source) {
             Token token = read_symbol(source, i, line);
             tokens.push_back(token);
         } else if (is_space(c) == true) {
-            i++; //spaces between things get skipped
+            //spaces between things get skipped
+            i++;
         } else {
             Token token = read_unknown(source, i, line);
             tokens.push_back(token);

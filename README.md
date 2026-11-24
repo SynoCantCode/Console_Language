@@ -12,6 +12,6 @@ fn int add(int a, int b)
 endfn
 ```
 
-Right now the lexer is finished, and I'm working on the parser next.
+The lexer is finished, and the parser can now read a whole file of assignments and math, with the right order of operations. `build/langc.exe --ast FILE` prints the tree it builds.
 
 To build it you need g++ and make. Run `make` in this folder and it builds `build/langc.exe`.

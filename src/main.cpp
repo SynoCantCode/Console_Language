@@ -4,19 +4,24 @@
 #include <iostream>
 #include <sstream>
 #include <string>
-#include "token.hpp"
 #include "lexer.hpp"
+#include "parser.hpp"
 using namespace std;
 
 // reads the whole file at path into text, gives back false if the file can't be opened
 bool read_file(const string &path, string &text) {
-    ifstream file(path); //open the file for reading
+    //open the file for reading
+    ifstream file(path);
     if (file.is_open() == false) {
-        return false; //it didn't open
+        //it didn't open
+        return false;
     }
-    stringstream buffer;   //a string we can pour things into
-    buffer << file.rdbuf(); //pour the whole file into it
-    text = buffer.str();    //take the finished string out
+    //a string we can pour things into
+    stringstream buffer;
+    //pour the whole file into it
+    buffer << file.rdbuf();
+    //take the finished string out
+    text = buffer.str();
     return true;
 }
 
@@ -67,14 +72,22 @@ void print_tokens(const vector<Token> &tokens) {
 // the compiler
 
 int main(int argc, char **argv) {
-    if (argc != 2) {
-        cerr << "usage: langc FILE.lang" << endl;
+    //langc FILE.lang prints the tokens, langc --ast FILE.lang prints the tree
+    bool show_tree = false;
+    string path;
+    if (argc == 2) {
+        path = argv[1];
+    } else if (argc == 3 && string(argv[1]) == "--ast") {
+        show_tree = true;
+        path = argv[2];
+    } else {
+        cerr << "usage: langc [--ast] FILE.lang" << endl;
         return 1;
     }
 
-    string path = argv[1];
     string source;
-    bool opened = read_file(path, source); //fills source with the file's text
+    //fills source with the file's text
+    bool opened = read_file(path, source);
     if (opened == false) {
         cerr << "langc: can't open " << path << endl;
         return 1;
@@ -89,7 +102,12 @@ int main(int argc, char **argv) {
         return 1;
     }
 
-    //step 3, no mistakes so print the tokens
+    //step 3, no mistakes, so print the tree or the tokens
+    if (show_tree == true) {
+        Node* program = parse(tokens);
+        print_tree(program, 0);
+        return 0;
+    }
     print_tokens(tokens);
     return 0;
 }

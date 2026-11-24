@@ -55,7 +55,8 @@ KeywordKind keyword_kind(const string &word) {
             return entry.keyword;
         }
     }
-    return KeywordKind::None; //not a keyword after all
+    //not a keyword after all
+    return KeywordKind::None;
 }
 
 
@@ -86,3 +87,4 @@ string keyword_name(KeywordKind keyword) {
     }
     return "none";
 }
+

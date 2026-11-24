@@ -13,7 +13,8 @@ enum class TokenKind {
     Symbol,
     Newline,
     End,
-    Error, //a mistake in the code, its text is the message
+    //a mistake in the code, its text is the message
+    Error,
 };
 
 // which keyword it is, only for Keyword tokens and None for everything else
@@ -45,7 +46,8 @@ struct Token {
     TokenKind kind;
     string text;
     int line;
-    KeywordKind keyword = KeywordKind::None; //which keyword it is, if kind is Keyword
+    //which keyword it is, if kind is Keyword
+    KeywordKind keyword = KeywordKind::None;
 };
 
 // one keyword, its word and which keyword it is
