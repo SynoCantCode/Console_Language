@@ -67,6 +67,17 @@ string node_kind_name(NodeKind kind) {
         case NodeKind::Field:   return "Field";
         case NodeKind::Index:   return "Index";
         case NodeKind::Follow:  return "Follow";
+        case NodeKind::Bool:    return "Bool";
+        case NodeKind::String:  return "String";
+        case NodeKind::Character: return "Character";
+        case NodeKind::List:    return "List";
+        case NodeKind::Struct:  return "Struct";
+        case NodeKind::Enum:    return "Enum";
+        case NodeKind::Class:   return "Class";
+        case NodeKind::Access:  return "Access";
+        case NodeKind::This:    return "This";
+        case NodeKind::Undefined: return "Undefined";
+        case NodeKind::Cast:    return "Cast";
 
     }
     return "?";

@@ -3,6 +3,8 @@
 Node* read_NNV(); //promise
 // promise bc read_if and the boss call each other
 Node* read_statement();
+// promise bc read_expression uses it for as
+Node* read_type();
 //errors
 vector<Node*> errors_found;
 
@@ -88,8 +90,8 @@ Node* expect_line_end(string line_end) {
 
 
 
-// reads one number or one name and gives back its node
-Node* read_number_or_name() {
+// reads a value thats just one token like 2 or hp or "hi" or 'a' or true
+Node* read_single_value() {
     //look at the token we're up to
     Token token = current_token();
 
@@ -107,6 +109,30 @@ Node* read_number_or_name() {
         return make_node(NodeKind::Name, token.text, token.line);
     }
 
+    // text in double quotes like "hero"
+    if (token.kind == TokenKind::String) {
+        take();
+        return make_node(NodeKind::String, token.text, token.line);
+    }
+
+    // one character in single quotes like 'a'
+    if (token.kind == TokenKind::Character) {
+        take();
+        return make_node(NodeKind::Character, token.text, token.line);
+    }
+
+    // true or false
+    if (is_keyword(KeywordKind::True) == true || is_keyword(KeywordKind::False) == true) {
+        take();
+        return make_node(NodeKind::Bool, token.text, token.line);
+    }
+
+    // this inside a class function
+    if (is_keyword(KeywordKind::This) == true) {
+        take();
+        return make_node(NodeKind::This, "this", token.line);
+    }
+
     //anything else is a mistake here
     return make_node(NodeKind::Error, "expected a value", token.line);
 }
@@ -118,6 +144,10 @@ int operator_strength(Token token) {
     }
     if (token.kind == TokenKind::Keyword && token.keyword == KeywordKind::And) {
         return 2;
+    }
+    // as is the strongest so a + b as float means a + (b as float)
+    if (token.kind == TokenKind::Keyword && token.keyword == KeywordKind::As) {
+        return 6;
     }
     if (token.kind != TokenKind::Symbol) {
         //a name, number, newline and so on, not an operator
@@ -157,6 +187,20 @@ Node* read_expression(int limit) {
 
         //step past the operator
         Token op = take();
+
+        // as has a type on its right not a value
+        if (op.keyword == KeywordKind::As) {
+            Node* type = read_type();
+            if (type->kind == NodeKind::Error) {
+                return type;
+            }
+            Node* cast = make_node(NodeKind::Cast, "as", op.line);
+            cast->left = left_side;
+            cast->right = type;
+            left_side = cast;
+            continue;
+        }
+
         //its right side, only stronger operators join it
         Node* right_side = read_expression(strength);
         if (right_side->kind == NodeKind::Error) {
@@ -337,11 +381,17 @@ Node* read_declaration(string line_end = "newline") {
     if (is_symbol("=") == true) {
         // step past the =
         take();
-        Node* value = read_expression(0);
-        if (value->kind == NodeKind::Error) {
-            return value;
+        if (is_keyword(KeywordKind::Undefined) == true) {
+            // undefined skips the zeroing
+            Token word = take();
+            declare->right = make_node(NodeKind::Undefined, "undefined", word.line);
+        } else {
+            Node* value = read_expression(0);
+            if (value->kind == NodeKind::Error) {
+                return value;
+            }
+            declare->right = value;
         }
-        declare->right = value;
     }
 
     // the end of the line
@@ -700,6 +750,177 @@ Node* read_break_or_continue() {
     return make_node(NodeKind::Continue, "continue", word.line);
 }
 
+// reads a whole struct from the struct line to the endstruct line
+Node* read_struct() {
+    // the struct word
+    Token struct_word = take();
+
+    // the structs name
+    Token name = current_token();
+    if (name.kind != TokenKind::Name) {
+        return make_node(NodeKind::Error, "expected a name", name.line);
+    }
+    take();
+    Node* problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+
+    Node* struct_node = make_node(NodeKind::Struct, name.text, struct_word.line);
+
+    // the fields until endstruct
+    while (is_keyword(KeywordKind::Endstruct) == false) {
+        // the file ended with no endstruct
+        if (current_token().kind == TokenKind::End) {
+            return make_node(NodeKind::Error, "this struct has no endstruct", struct_word.line);
+        }
+        if (current_token().kind == TokenKind::Newline) {
+            // a blank line inside
+            take();
+        } else {
+            // every line inside is a field
+            Node* field = read_declaration();
+            if (field->kind == NodeKind::Error) {
+                return field;
+            }
+            struct_node->children.push_back(field);
+        }
+    }
+
+    // the endstruct line
+    take();
+    problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+    return struct_node;
+}
+
+// reads a whole enum from the enum line to the endenum line
+Node* read_enum() {
+    // the enum word
+    Token enum_word = take();
+
+    // the enums name
+    Token name = current_token();
+    if (name.kind != TokenKind::Name) {
+        return make_node(NodeKind::Error, "expected a name", name.line);
+    }
+    take();
+    Node* problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+
+    Node* enum_node = make_node(NodeKind::Enum, name.text, enum_word.line);
+
+    // the choices until endenum
+    while (is_keyword(KeywordKind::Endenum) == false) {
+        // the file ended with no endenum
+        if (current_token().kind == TokenKind::End) {
+            return make_node(NodeKind::Error, "this enum has no endenum", enum_word.line);
+        }
+        if (current_token().kind == TokenKind::Newline) {
+            // a blank line inside
+            take();
+        } else {
+            // each line is one choice like Idle
+            Token choice = current_token();
+            if (choice.kind != TokenKind::Name) {
+                return make_node(NodeKind::Error, "expected a name", choice.line);
+            }
+            take();
+            enum_node->children.push_back(make_node(NodeKind::Name, choice.text, choice.line));
+            problem = expect_newline();
+            if (problem != nullptr) {
+                return problem;
+            }
+        }
+    }
+
+    // the endenum line
+    take();
+    problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+    return enum_node;
+}
+
+// reads a whole class from the class line to the endclass line
+Node* read_class() {
+    // the class word
+    Token class_word = take();
+
+    // the classs name
+    Token name = current_token();
+    if (name.kind != TokenKind::Name) {
+        return make_node(NodeKind::Error, "expected a name", name.line);
+    }
+    take();
+    Node* class_node = make_node(NodeKind::Class, name.text, class_word.line);
+
+    // a parent like class Enemy : Thing
+    if (is_symbol(":") == true) {
+        take();
+        Token parent = current_token();
+        if (parent.kind != TokenKind::Name) {
+            return make_node(NodeKind::Error, "expected the parents name", parent.line);
+        }
+        take();
+        class_node->left = make_node(NodeKind::Name, parent.text, parent.line);
+    }
+
+    Node* problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+
+    // the members until endclass
+    while (is_keyword(KeywordKind::Endclass) == false) {
+        // the file ended with no endclass
+        if (current_token().kind == TokenKind::End) {
+            return make_node(NodeKind::Error, "this class has no endclass", class_word.line);
+        }
+        if (current_token().kind == TokenKind::Newline) {
+            // a blank line inside
+            take();
+        } else {
+            // private goes in front of a member and everything else is public
+            Token first = current_token();
+            string access = "public";
+            if (is_keyword(KeywordKind::Private) == true) {
+                take();
+                access = "private";
+            }
+
+            // a member is a function or a field
+            Node* member = nullptr;
+            if (is_keyword(KeywordKind::Fn) == true) {
+                member = read_function();
+            } else {
+                member = read_declaration();
+            }
+            if (member->kind == NodeKind::Error) {
+                return member;
+            }
+
+            // every member gets an Access node on top saying public or private
+            Node* wrapper = make_node(NodeKind::Access, access, first.line);
+            wrapper->left = member;
+            class_node->children.push_back(wrapper);
+        }
+    }
+
+    // the endclass line
+    take();
+    problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+    return class_node;
+}
+
 // the boss, looks at the first token of a line and hands the line to the right worker
 Node* read_statement() {
     Token token = current_token();
@@ -713,6 +934,12 @@ Node* read_statement() {
         statement = read_while();
     } else if (is_keyword(KeywordKind::For) == true) {
         statement = read_for();
+    } else if (is_keyword(KeywordKind::Struct) == true) {
+        statement = read_struct();
+    } else if (is_keyword(KeywordKind::Enum) == true) {
+        statement = read_enum();
+    } else if (is_keyword(KeywordKind::Class) == true) {
+        statement = read_class();
     } else if (is_keyword(KeywordKind::Fn) == true) {
         statement = read_function();
     } else if (is_keyword(KeywordKind::Return) == true) {
@@ -721,7 +948,8 @@ Node* read_statement() {
         statement = read_break_or_continue();
     } else if (declaration_starts_here() == true) {
         statement = read_declaration();
-    } else if (token.kind == TokenKind::Name) {
+    } else if (token.kind == TokenKind::Name || is_keyword(KeywordKind::This) == true) {
+        // a name line or this.hp = 5
         statement = read_name_line();
     } else {
         statement = make_node(NodeKind::Error, "a line can't start with this", token.line);
@@ -756,6 +984,39 @@ Node* parse(vector<Token> lexer_tokens, vector<Node*> &errors) {
     return program;
 }
 
+// reads values split by commas until end_symbol and puts them in holders children
+// gives back nullptr if it went fine or an Error
+Node* read_values_until(string end_symbol, Node* holder) {
+    // nothing inside like tick() or []
+    if (is_symbol(end_symbol) == false) {
+        while (true) {
+            Node* value = read_expression(0);
+            if (value->kind == NodeKind::Error) {
+                return value;
+            }
+            holder->children.push_back(value);
+            // a , means another value comes next
+            if (is_symbol(",") == true) {
+                take();
+            } else {
+                break;
+            }
+        }
+    }
+    return expect_symbol(end_symbol);
+}
+
+// reads a front symbol like - or not or & and the value it goes on
+Node* read_value_front() {
+    Token front = take();
+    // the value it goes on which can have its own front symbol
+    Node* side = read_NNV();
+    if (side->kind == NodeKind::Error) {
+        return side;
+    }
+    return make_unary_node(front.text, side, front.line);
+}
+
 // reads anything stuck after a value like add(1, 2) or player.hp or scores[3] or p^
 Node* read_value_endings(Node* value) {
     while (true) {
@@ -764,22 +1025,7 @@ Node* read_value_endings(Node* value) {
             Token bracket = take();
             Node* call = make_node(NodeKind::Call, "", bracket.line);
             call->left = value;
-            if (is_symbol(")") == false) {
-                while (true) {
-                    Node* input = read_expression(0);
-                    if (input->kind == NodeKind::Error) {
-                        return input;
-                    }
-                    call->children.push_back(input);
-                    // a , means another input comes next
-                    if (is_symbol(",") == true) {
-                        take();
-                    } else {
-                        break;
-                    }
-                }
-            }
-            Node* problem = expect_symbol(")");
+            Node* problem = read_values_until(")", call);
             if (problem != nullptr) {
                 return problem;
             }
@@ -825,40 +1071,40 @@ Node* read_value_endings(Node* value) {
 }
 
 Node* read_NNV() { //name number value it stands for bc its too long to type
-    Token token = current_token();
-
-    //a - or not where a value should start goes on just the next value
-    if (is_symbol("-") == true || (token.kind == TokenKind::Keyword && token.keyword == KeywordKind::Not)) {
-        //step past the - or not
-        take();
-        //the one value it goes on, which can have its own - or brackets
-        Node* side = read_NNV();
-        if (side->kind == NodeKind::Error) {
-            return side;
-        }
-        return make_unary_node(token.text, side, token.line);
+    // before: a front symbol goes on the next value
+    if (is_symbol("-") == true || is_symbol("&") == true || is_keyword(KeywordKind::Not) == true) {
+        return read_value_front();
     }
 
+    // the start: brackets or a list or one token
+    Node* value = nullptr;
     if (is_symbol("(") == true) {
         //step past the (
         take();
         //the inside is a fresh whole expression, so every operator counts again
-        Node* inside = read_expression(0);
-        if (inside->kind == NodeKind::Error) {
-            return inside;
+        value = read_expression(0);
+        if (value->kind == NodeKind::Error) {
+            return value;
         }
         Node* problem = expect_symbol(")");
         if (problem != nullptr) {
             return problem;
         }
-        //the inside's tree counts as one value and can have endings like (a).hp
-        return read_value_endings(inside);
+    } else if (is_symbol("[") == true) {
+        // a list like [10, 20, 30]
+        Token bracket = take();
+        value = make_node(NodeKind::List, "", bracket.line);
+        Node* problem = read_values_until("]", value);
+        if (problem != nullptr) {
+            return problem;
+        }
+    } else {
+        value = read_single_value();
+        if (value->kind == NodeKind::Error) {
+            return value;
+        }
     }
 
-    // one number or name then any endings after it
-    Node* value = read_number_or_name();
-    if (value->kind == NodeKind::Error) {
-        return value;
-    }
+    // after: endings like (1, 2) or .hp or [3] or ^
     return read_value_endings(value);
 }

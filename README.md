@@ -12,6 +12,6 @@ fn int add(int a, int b)
 endfn
 ```
 
-The lexer is finished, and the parser can now read a whole file of functions (`fn int add(int a, int b)`, `return`), calls, fields and indexes (`players[2].hp`), if / elif / else, while and for blocks with `break` and `continue`, declarations (`const int MAX = 100`, `Player^ p`, `char grid[8][8]`), assignments and math, with the right order of operations, brackets, negatives and `not`. Mistakes get printed with their line number. `build/langc.exe --tokens --ast FILE` prints the tokens and the tree it builds.
+The lexer and the parser are finished. The parser reads a whole file into a tree: functions, structs, enums and classes (with `private` and a parent), if / elif / else, while and for blocks, declarations (`const int MAX = 100`, `Player^ p`, `char grid[8][8]`), calls, fields and indexes (`players[2].hp`), lists, strings, casts (`count as float`) and math with the right order of operations. Mistakes get printed with their line number. `build/langc.exe --tokens --ast FILE` prints the tokens and the tree it builds.
 
 To build it you need g++ and make. Run `make` in this folder and it builds `build/langc.exe`.

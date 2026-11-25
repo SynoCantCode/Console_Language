@@ -34,6 +34,17 @@ enum class NodeKind {
     Field,
     Index,
     Follow,
+    Bool,
+    String,
+    Character,
+    List,
+    Struct,
+    Enum,
+    Class,
+    Access,
+    This,
+    Undefined,
+    Cast,
 };
 
 //one node of the tree
