@@ -53,6 +53,11 @@ string node_kind_name(NodeKind kind) {
         case NodeKind::Type:    return "Type";
         case NodeKind::Modifier: return "Modifier";
         case NodeKind::Size:    return "Size";
+        case NodeKind::If:      return "If";
+        case NodeKind::Branch:  return "Branch";
+        case NodeKind::While:   return "While";
+        case NodeKind::For:     return "For";
+        case NodeKind::Parts:   return "Parts";
 
     }
     return "?";

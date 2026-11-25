@@ -20,6 +20,11 @@ enum class NodeKind {
     Type,
     Modifier,
     Size,
+    If,
+    Branch,
+    While,
+    For,
+    Parts,
 };
 
 //one node of the tree

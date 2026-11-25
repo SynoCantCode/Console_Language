@@ -1,6 +1,8 @@
 #include "parser.hpp"
 
 Node* read_NNV(); //promise
+// promise bc read_if and the boss call each other
+Node* read_statement();
 //errors
 vector<Node*> errors_found;
 
@@ -372,6 +374,197 @@ void skip_to_next_line() {
     }
 }
 
+// reads an if or elif or else line and gives back an empty Branch for its lines
+Node* read_branch_line() {
+    // the if or elif or else word
+    Token word = take();
+    Node* branch = make_node(NodeKind::Branch, word.text, word.line);
+
+    // else has no condition
+    if (word.keyword != KeywordKind::Else) {
+        Node* problem = expect_symbol("(");
+        if (problem != nullptr) {
+            return problem;
+        }
+        Node* condition = read_expression(0);
+        if (condition->kind == NodeKind::Error) {
+            return condition;
+        }
+        problem = expect_symbol(")");
+        if (problem != nullptr) {
+            return problem;
+        }
+        branch->left = condition;
+    }
+
+    Node* problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+    return branch;
+}
+
+// reads a whole if block from the if line to the endif line
+Node* read_if() {
+    Token if_word = current_token();
+    Node* if_node = make_node(NodeKind::If, "if", if_word.line);
+
+    // the first branch from the if line
+    Node* branch = read_branch_line();
+    if (branch->kind == NodeKind::Error) {
+        return branch;
+    }
+    if_node->children.push_back(branch);
+
+    // nothing can come after an else
+    bool seen_else = false;
+
+    // the inside lines until endif
+    while (is_keyword(KeywordKind::Endif) == false) {
+        // the file ended with no endif
+        if (current_token().kind == TokenKind::End) {
+            return make_node(NodeKind::Error, "this if has no endif", if_word.line);
+        }
+
+        if (is_keyword(KeywordKind::Elif) == true || is_keyword(KeywordKind::Else) == true) {
+            // elif or else starts a new branch
+            if (seen_else == true) {
+                return make_node(NodeKind::Error, "nothing can come after else", current_token().line);
+            }
+            if (is_keyword(KeywordKind::Else) == true) {
+                seen_else = true;
+            }
+            branch = read_branch_line();
+            if (branch->kind == NodeKind::Error) {
+                return branch;
+            }
+            if_node->children.push_back(branch);
+        } else {
+            // any other line goes in the branch were on
+            Node* line = read_statement();
+            branch->children.push_back(line);
+        }
+    }
+
+    // the endif line
+    take();
+    Node* problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+    return if_node;
+}
+
+// reads a whole while block from the while line to the endwhile line
+Node* read_while() {
+    // the while word
+    Token while_word = take();
+
+    // the condition in brackets
+    Node* problem = expect_symbol("(");
+    if (problem != nullptr) {
+        return problem;
+    }
+    Node* condition = read_expression(0);
+    if (condition->kind == NodeKind::Error) {
+        return condition;
+    }
+    problem = expect_symbol(")");
+    if (problem != nullptr) {
+        return problem;
+    }
+    problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+
+    // the While node with the condition on its left
+    Node* while_node = make_node(NodeKind::While, "while", while_word.line);
+    while_node->left = condition;
+
+    // the inside lines until endwhile
+    while (is_keyword(KeywordKind::Endwhile) == false) {
+        // the file ended with no endwhile
+        if (current_token().kind == TokenKind::End) {
+            return make_node(NodeKind::Error, "this while has no endwhile", while_word.line);
+        }
+        Node* line = read_statement();
+        while_node->children.push_back(line);
+    }
+
+    // the endwhile line
+    take();
+    problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+    return while_node;
+}
+
+// reads a whole for block from the for line to the endfor line
+Node* read_for() {
+    // the for word
+    Token for_word = take();
+    Node* problem = expect_symbol("(");
+    if (problem != nullptr) {
+        return problem;
+    }
+
+    // the start like int i = 0 ends at ;
+    Node* start = read_declaration(";");
+    if (start->kind == NodeKind::Error) {
+        return start;
+    }
+
+    // the check like i < 10
+    Node* check = read_expression(0);
+    if (check->kind == NodeKind::Error) {
+        return check;
+    }
+    problem = expect_symbol(";");
+    if (problem != nullptr) {
+        return problem;
+    }
+
+    // the step like i = i + 1 ends at )
+    Node* step = read_name_line(")");
+    if (step->kind == NodeKind::Error) {
+        return step;
+    }
+    problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+
+    // Parts holds the start and the step
+    Node* parts = make_node(NodeKind::Parts, "", for_word.line);
+    parts->left = start;
+    parts->right = step;
+
+    // the For node with the check on its left like while
+    Node* for_node = make_node(NodeKind::For, "for", for_word.line);
+    for_node->left = check;
+    for_node->right = parts;
+
+    // the inside lines until endfor
+    while (is_keyword(KeywordKind::Endfor) == false) {
+        // the file ended with no endfor
+        if (current_token().kind == TokenKind::End) {
+            return make_node(NodeKind::Error, "this for has no endfor", for_word.line);
+        }
+        Node* line = read_statement();
+        for_node->children.push_back(line);
+    }
+
+    // the endfor line
+    take();
+    problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+    return for_node;
+}
+
 // the boss, looks at the first token of a line and hands the line to the right worker
 Node* read_statement() {
     Token token = current_token();
@@ -379,6 +572,12 @@ Node* read_statement() {
 
     if (token.kind == TokenKind::Newline) {
         statement = read_blank_line();
+    } else if (is_keyword(KeywordKind::If) == true) {
+        statement = read_if();
+    } else if (is_keyword(KeywordKind::While) == true) {
+        statement = read_while();
+    } else if (is_keyword(KeywordKind::For) == true) {
+        statement = read_for();
     } else if (declaration_starts_here() == true) {
         statement = read_declaration();
     } else if (token.kind == TokenKind::Name) {
