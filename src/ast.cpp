@@ -49,6 +49,10 @@ string node_kind_name(NodeKind kind) {
         case NodeKind::Assign:  return "Assign";
         case NodeKind::Blank:   return "Blank";
         case NodeKind::Program: return "Program";
+        case NodeKind::Declare: return "Declare";
+        case NodeKind::Type:    return "Type";
+        case NodeKind::Modifier: return "Modifier";
+        case NodeKind::Size:    return "Size";
 
     }
     return "?";

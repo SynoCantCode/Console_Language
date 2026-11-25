@@ -16,6 +16,10 @@ enum class NodeKind {
     Assign,
     Blank,
     Program,
+    Declare,
+    Type,
+    Modifier,
+    Size,
 };
 
 //one node of the tree

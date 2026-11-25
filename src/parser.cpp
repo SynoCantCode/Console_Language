@@ -13,6 +13,15 @@ Token current_token() {
     return tokens[position];
 }
 
+// looks ahead how_far tokens past the finger without moving it
+Token token_after(size_t how_far) {
+    // past the end just gives back End
+    if (position + how_far >= tokens.size()) {
+        return tokens.back();
+    }
+    return tokens[position + how_far];
+}
+
 // gives back the token the finger is on, then moves the finger forward one
 Token take() {
     //remember the token under the finger
@@ -29,6 +38,15 @@ Token take() {
 bool is_symbol(string text) {
     Token token = current_token();
     if (token.kind == TokenKind::Symbol && token.text == text) {
+        return true;
+    }
+    return false;
+}
+
+// is the finger on this keyword
+bool is_keyword(KeywordKind keyword) {
+    Token token = current_token();
+    if (token.kind == TokenKind::Keyword && token.keyword == keyword) {
         return true;
     }
     return false;
@@ -59,11 +77,11 @@ Node* expect_newline() {
 
 // a line normally ends at a new line, but inside a for each part counts as its own line, the first two parts end at ; and the last one ends at )
 // the finger must be on the end a worker was told to look for, a new line, or a symbol like ; or )
-Node* expect_line_end(string end_token) {
-    if (end_token == "newline") {
+Node* expect_line_end(string line_end) {
+    if (line_end == "newline") {
         return expect_newline();
     }
-    return expect_symbol(end_token);
+    return expect_symbol(line_end);
 }
 
 
@@ -153,7 +171,7 @@ Node* read_expression(int limit) {
 }
 
 // reads a line that starts with a name, an assignment like hp = 3 or a call line
-Node* read_name_line(string end_token = "newline") {
+Node* read_name_line(string line_end = "newline") {
     // the left side of the =, or the whole line if it is a call
     Node* left_side = read_expression(0);
     if (left_side->kind == NodeKind::Error) {
@@ -162,7 +180,7 @@ Node* read_name_line(string end_token = "newline") {
 
     // no = means it is a call line, so the expression is the whole line
     if (is_symbol("=") == false) {
-        Node* problem = expect_line_end(end_token);
+        Node* problem = expect_line_end(line_end);
         if (problem != nullptr) {
             return problem;
         }
@@ -185,7 +203,7 @@ Node* read_name_line(string end_token = "newline") {
 
     // the end of the line
 
-    Node* problem = expect_line_end(end_token);
+    Node* problem = expect_line_end(line_end);
     if (problem != nullptr) {
         return problem;
     }
@@ -196,6 +214,141 @@ Node* read_name_line(string end_token = "newline") {
     assign->right = right_side;
     return assign;
 }
+
+// is this token one of the 14 type keywords, like int or vec3
+bool is_type_keyword(Token token) {
+    if (token.kind != TokenKind::Keyword) {
+        return false;
+    }
+    KeywordKind k = token.keyword;
+    // the plain types
+    if (k == KeywordKind::Void || k == KeywordKind::Char || k == KeywordKind::Short || k == KeywordKind::Int ||
+        k == KeywordKind::Long || k == KeywordKind::Float || k == KeywordKind::Double || k == KeywordKind::Bool) {
+        return true;
+    }
+    // the game types
+    if (k == KeywordKind::Fixed || k == KeywordKind::Str || k == KeywordKind::Vec2 ||
+        k == KeywordKind::Vec3 || k == KeywordKind::Vec4 || k == KeywordKind::Mat4) {
+        return true;
+    }
+    return false;
+}
+
+// reads a type, a type keyword like int or a struct's name like Player, and gives back a Type node
+Node* read_type() {
+    // text gets filled in once we reach the type word
+    Node* type = make_node(NodeKind::Type, "", current_token().line);
+
+    // const goes first if its there
+    if (is_keyword(KeywordKind::Const) == true) {
+        Token word = take();
+        type->children.push_back(make_node(NodeKind::Modifier, word.text, word.line));
+    }
+
+    // then unsigned if its there
+    if (is_keyword(KeywordKind::Unsigned) == true) {
+        Token word = take();
+        type->children.push_back(make_node(NodeKind::Modifier, word.text, word.line));
+    }
+
+    // the type word itself like int or Player
+    Token token = current_token();
+    if (is_type_keyword(token) == true || token.kind == TokenKind::Name) {
+        take();
+        type->text = token.text;
+        // each ^ makes a new Type on top that points to whats below it
+        while (is_symbol("^") == true) {
+            Token hat = take();
+            Node* pointer = make_node(NodeKind::Type, hat.text, hat.line);
+            pointer->left = type;
+            type = pointer;
+        }
+        return type;
+    }
+    return make_node(NodeKind::Error, "expected a type", token.line);
+}
+
+// does the line the finger is on start a declaration, like int hp = 10 or Player hero
+bool declaration_starts_here() {
+    Token token = current_token();
+    // int hp = 10
+    if (is_type_keyword(token) == true) {
+        return true;
+    }
+    // const int MAX = 100 or unsigned int score
+    if (is_keyword(KeywordKind::Const) == true || is_keyword(KeywordKind::Unsigned) == true) {
+        return true;
+    }
+    // Player hero or Player^ p
+    if (token.kind == TokenKind::Name) {
+        // skip over any ^ after the name
+        size_t how_far = 1;
+        while (token_after(how_far).kind == TokenKind::Symbol && token_after(how_far).text == "^") {
+            how_far = how_far + 1;
+        }
+        // a name after that means its a type then a name
+        if (token_after(how_far).kind == TokenKind::Name) {
+            return true;
+        }
+    }
+    return false;
+}
+
+// reads a declaration like int hp = 10, gives back a Declare node with the type on its left and the value on its right
+Node* read_declaration(string line_end = "newline") {
+    // the type, read_type takes it
+    Node* type = read_type();
+    if (type->kind == NodeKind::Error) {
+        return type;
+    }
+
+    // the name being made
+    Token name = current_token();
+    if (name.kind != TokenKind::Name) {
+        return make_node(NodeKind::Error, "expected a name", name.line);
+    }
+    take();
+
+    // the Declare node with the name in its text
+    Node* declare = make_node(NodeKind::Declare, name.text, name.line);
+    declare->left = type;
+
+    // array sizes like [10] go in children one Size node each
+    while (is_symbol("[") == true) {
+        Token bracket = take();
+        Node* amount = read_expression(0);
+        if (amount->kind == NodeKind::Error) {
+            return amount;
+        }
+        Node* problem = expect_symbol("]");
+        if (problem != nullptr) {
+            return problem;
+        }
+        // the Size node holds the amount on its left
+        Node* size = make_node(NodeKind::Size, "", bracket.line);
+        size->left = amount;
+        declare->children.push_back(size);
+    }
+
+    // start value if theres an =
+    if (is_symbol("=") == true) {
+        // step past the =
+        take();
+        Node* value = read_expression(0);
+        if (value->kind == NodeKind::Error) {
+            return value;
+        }
+        declare->right = value;
+    }
+
+    // the end of the line
+    Node* problem = expect_line_end(line_end);
+    if (problem != nullptr) {
+        return problem;
+    }
+    return declare;
+}
+
 
 // a line with nothing on it, gives back a Blank node that the later steps skip
 Node* read_blank_line() {
@@ -226,6 +379,8 @@ Node* read_statement() {
 
     if (token.kind == TokenKind::Newline) {
         statement = read_blank_line();
+    } else if (declaration_starts_here() == true) {
+        statement = read_declaration();
     } else if (token.kind == TokenKind::Name) {
         statement = read_name_line();
     } else {
