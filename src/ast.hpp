@@ -25,6 +25,15 @@ enum class NodeKind {
     While,
     For,
     Parts,
+    Function,
+    Inputs,
+    Return,
+    Break,
+    Continue,
+    Call,
+    Field,
+    Index,
+    Follow,
 };
 
 //one node of the tree
@@ -42,4 +51,4 @@ Node* make_node(NodeKind kind, string text, int line);
 Node* make_binary_node(string op, Node* left_side, Node* right_side, int line);
 Node* make_unary_node(string op, Node* side, int line);
 string node_kind_name(NodeKind kind);
-void print_tree(Node* node, int depth);
+void print_tree(Node* node, int depth, string label);

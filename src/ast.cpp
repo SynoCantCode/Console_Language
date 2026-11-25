@@ -58,13 +58,22 @@ string node_kind_name(NodeKind kind) {
         case NodeKind::While:   return "While";
         case NodeKind::For:     return "For";
         case NodeKind::Parts:   return "Parts";
+        case NodeKind::Function: return "Function";
+        case NodeKind::Inputs:  return "Inputs";
+        case NodeKind::Return:  return "Return";
+        case NodeKind::Break:   return "Break";
+        case NodeKind::Continue: return "Continue";
+        case NodeKind::Call:    return "Call";
+        case NodeKind::Field:   return "Field";
+        case NodeKind::Index:   return "Index";
+        case NodeKind::Follow:  return "Follow";
 
     }
     return "?";
 }
 
 // prints a node and everything under it, each level pushed in 2 more spaces
-void print_tree(Node* node, int depth) {
+void print_tree(Node* node, int depth, string label) {
     if (node == nullptr) {
         return;  
     }
@@ -72,16 +81,16 @@ void print_tree(Node* node, int depth) {
     for (int i = 0; i < depth; i++) {
         cout << "  ";
     }
-    cout << node_kind_name(node->kind) << " " << node->text << endl;
+    cout << label << node_kind_name(node->kind) << " " << node->text << endl;
 
     //print th left side, one level deeper
-    print_tree(node->left, depth + 1);
+    print_tree(node->left, depth + 1, "left: ");
     //print the right side, one level deeper
-    print_tree(node->right, depth + 1);
+    print_tree(node->right, depth + 1, "right: ");
 
     //print every child in order, one level down mor
     for (size_t i = 0; i < node->children.size(); i=i+1) {
-        print_tree(node->children[i], depth + 1);
+        print_tree(node->children[i], depth + 1, "child: ");
     }
 
 }

@@ -190,8 +190,9 @@ Node* read_name_line(string line_end = "newline") {
     }
 
     // only something that can hold a value can go on the left of =
-    if (left_side->kind != NodeKind::Name) {
-        return make_node(NodeKind::Error, "the left side of = must be a name", left_side->line);
+    NodeKind k = left_side->kind;
+    if (k != NodeKind::Name && k != NodeKind::Field && k != NodeKind::Index && k != NodeKind::Follow) {
+        return make_node(NodeKind::Error, "the left side of = must be something that holds a value", left_side->line);
     }
 
     // step past the =
@@ -565,6 +566,140 @@ Node* read_for() {
     return for_node;
 }
 
+// reads a functions inputs like int a, int b ) and gives back an Inputs node
+Node* read_inputs() {
+    Node* inputs = make_node(NodeKind::Inputs, "", current_token().line);
+
+    // no inputs like fn void tick()
+    if (is_symbol(")") == true) {
+        take();
+        return inputs;
+    }
+
+    while (true) {
+        // the inputs type
+        Node* type = read_type();
+        if (type->kind == NodeKind::Error) {
+            return type;
+        }
+
+        // the inputs name
+        Token name = current_token();
+        if (name.kind != TokenKind::Name) {
+            return make_node(NodeKind::Error, "expected a name", name.line);
+        }
+        take();
+
+        // each input is a Declare with no value
+        Node* input = make_node(NodeKind::Declare, name.text, name.line);
+        input->left = type;
+        inputs->children.push_back(input);
+
+        // a , means another input comes next
+        if (is_symbol(",") == true) {
+            take();
+        } else {
+            break;
+        }
+    }
+
+    Node* problem = expect_symbol(")");
+    if (problem != nullptr) {
+        return problem;
+    }
+    return inputs;
+}
+
+// reads a whole function from the fn line to the endfn line
+Node* read_function() {
+    // the fn word
+    Token fn_word = take();
+
+    // the type it gives back like int or void
+    Node* return_type = read_type();
+    if (return_type->kind == NodeKind::Error) {
+        return return_type;
+    }
+
+    // the functions name
+    Token name = current_token();
+    if (name.kind != TokenKind::Name) {
+        return make_node(NodeKind::Error, "expected a name", name.line);
+    }
+    take();
+
+    // the inputs in brackets
+    Node* problem = expect_symbol("(");
+    if (problem != nullptr) {
+        return problem;
+    }
+    Node* inputs = read_inputs();
+    if (inputs->kind == NodeKind::Error) {
+        return inputs;
+    }
+    problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+
+    // the Function node with the return type on its left and the inputs on its right
+    Node* function_node = make_node(NodeKind::Function, name.text, fn_word.line);
+    function_node->left = return_type;
+    function_node->right = inputs;
+
+    // the inside lines until endfn
+    while (is_keyword(KeywordKind::Endfn) == false) {
+        // the file ended with no endfn
+        if (current_token().kind == TokenKind::End) {
+            return make_node(NodeKind::Error, "this fn has no endfn", fn_word.line);
+        }
+        Node* line = read_statement();
+        function_node->children.push_back(line);
+    }
+
+    // the endfn line
+    take();
+    problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+    return function_node;
+}
+
+// reads a return line with or without a value
+Node* read_return() {
+    Token return_word = take();
+    Node* return_node = make_node(NodeKind::Return, "return", return_word.line);
+
+    // a plain return has nothing after it
+    if (current_token().kind != TokenKind::Newline) {
+        Node* value = read_expression(0);
+        if (value->kind == NodeKind::Error) {
+            return value;
+        }
+        return_node->left = value;
+    }
+
+    Node* problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+    return return_node;
+}
+
+// reads a break or continue line which is just the word
+Node* read_break_or_continue() {
+    Token word = take();
+    Node* problem = expect_newline();
+    if (problem != nullptr) {
+        return problem;
+    }
+    if (word.keyword == KeywordKind::Break) {
+        return make_node(NodeKind::Break, "break", word.line);
+    }
+    return make_node(NodeKind::Continue, "continue", word.line);
+}
+
 // the boss, looks at the first token of a line and hands the line to the right worker
 Node* read_statement() {
     Token token = current_token();
@@ -578,6 +713,12 @@ Node* read_statement() {
         statement = read_while();
     } else if (is_keyword(KeywordKind::For) == true) {
         statement = read_for();
+    } else if (is_keyword(KeywordKind::Fn) == true) {
+        statement = read_function();
+    } else if (is_keyword(KeywordKind::Return) == true) {
+        statement = read_return();
+    } else if (is_keyword(KeywordKind::Break) == true || is_keyword(KeywordKind::Continue) == true) {
+        statement = read_break_or_continue();
     } else if (declaration_starts_here() == true) {
         statement = read_declaration();
     } else if (token.kind == TokenKind::Name) {
@@ -615,6 +756,74 @@ Node* parse(vector<Token> lexer_tokens, vector<Node*> &errors) {
     return program;
 }
 
+// reads anything stuck after a value like add(1, 2) or player.hp or scores[3] or p^
+Node* read_value_endings(Node* value) {
+    while (true) {
+        if (is_symbol("(") == true) {
+            // a call with its inputs
+            Token bracket = take();
+            Node* call = make_node(NodeKind::Call, "", bracket.line);
+            call->left = value;
+            if (is_symbol(")") == false) {
+                while (true) {
+                    Node* input = read_expression(0);
+                    if (input->kind == NodeKind::Error) {
+                        return input;
+                    }
+                    call->children.push_back(input);
+                    // a , means another input comes next
+                    if (is_symbol(",") == true) {
+                        take();
+                    } else {
+                        break;
+                    }
+                }
+            }
+            Node* problem = expect_symbol(")");
+            if (problem != nullptr) {
+                return problem;
+            }
+            value = call;
+        } else if (is_symbol(".") == true) {
+            // a field like player.hp
+            take();
+            Token name = current_token();
+            if (name.kind != TokenKind::Name) {
+                return make_node(NodeKind::Error, "expected a field name", name.line);
+            }
+            take();
+            Node* field = make_node(NodeKind::Field, name.text, name.line);
+            field->left = value;
+            value = field;
+        } else if (is_symbol("[") == true) {
+            // an item like scores[3]
+            Token bracket = take();
+            Node* item = read_expression(0);
+            if (item->kind == NodeKind::Error) {
+                return item;
+            }
+            Node* problem = expect_symbol("]");
+            if (problem != nullptr) {
+                return problem;
+            }
+            Node* index = make_node(NodeKind::Index, "", bracket.line);
+            index->left = value;
+            index->right = item;
+            value = index;
+        } else if (is_symbol("^") == true) {
+            // follow a pointer like p^
+            Token hat = take();
+            Node* follow = make_node(NodeKind::Follow, "", hat.line);
+            follow->left = value;
+            value = follow;
+        } else {
+            // no more endings
+            break;
+        }
+    }
+    return value;
+}
+
 Node* read_NNV() { //name number value it stands for bc its too long to type
     Token token = current_token();
 
@@ -642,8 +851,14 @@ Node* read_NNV() { //name number value it stands for bc its too long to type
         if (problem != nullptr) {
             return problem;
         }
-        //the inside's tree counts as one value
-        return inside;
+        //the inside's tree counts as one value and can have endings like (a).hp
+        return read_value_endings(inside);
     }
-    return read_number_or_name();
+
+    // one number or name then any endings after it
+    Node* value = read_number_or_name();
+    if (value->kind == NodeKind::Error) {
+        return value;
+    }
+    return read_value_endings(value);
 }

@@ -142,7 +142,7 @@ int main(int argc, char **argv) {
 
     //step 5, print the tree if asked
     if (show_tree == true) {
-        print_tree(program, 0);
+        print_tree(program, 0, "");
     }
     return 0;
 }
