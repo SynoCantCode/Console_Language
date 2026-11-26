@@ -25,7 +25,7 @@ const vector<KeywordEntry> KEYWORDS = {
     { "int", KeywordKind::Int }, { "long", KeywordKind::Long }, { "float", KeywordKind::Float },
     { "double", KeywordKind::Double }, { "bool", KeywordKind::Bool }, { "unsigned", KeywordKind::Unsigned },
     // other
-    { "const", KeywordKind::Const }, { "import", KeywordKind::Import }, { "as", KeywordKind::As }, { "undefined", KeywordKind::Undefined },
+    { "const", KeywordKind::Const }, { "include", KeywordKind::Include }, { "as", KeywordKind::As }, { "undefined", KeywordKind::Undefined },
     // hardware
     { "load", KeywordKind::Load }, { "store", KeywordKind::Store }, { "from", KeywordKind::From }, { "to", KeywordKind::To },
     // game

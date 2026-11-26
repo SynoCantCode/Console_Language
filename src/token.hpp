@@ -34,7 +34,7 @@ enum class KeywordKind {
     // types
     Void, Char, Short, Int, Long, Float, Double, Bool, Unsigned,
     // other
-    Const, Import, As, Undefined,
+    Const, Include, As, Undefined,
     // hardware
     Load, Store, From, To,
     // game
