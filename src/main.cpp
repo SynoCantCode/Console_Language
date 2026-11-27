@@ -6,6 +6,7 @@
 #include <string>
 #include "lexer.hpp"
 #include "parser.hpp"
+#include "checker.hpp"
 using namespace std;
 
 // reads the whole file at path into text, gives back false if the file can't be opened
@@ -42,16 +43,16 @@ bool has_error(const vector<Token> &tokens) {
 void print_errors(const string &path, const vector<Token> &tokens) {
     for (const Token &t : tokens) {
         if (t.kind == TokenKind::Error) {
-            cerr << path << ":" << t.line << ": " << t.text << endl;
+            cerr << path << ":" << t.line << ": lexer error: " << t.text << endl;
         }
     }
 }
 
 
-//print each mistake the parser found with its file and line
-void print_parse_errors(const string &path, const vector<Node*> &errors) {
+//print each mistake the parser or checker found with its file and line and which step found it
+void print_stage_errors(const string &path, const vector<Node*> &errors, const string &stage) {
     for (Node* error : errors) {
-        cerr << path << ":" << error->line << ": " << error->text << endl;
+        cerr << path << ":" << error->line << ": " << stage << " error: " << error->text << endl;
     }
 }
 
@@ -136,13 +137,20 @@ int main(int argc, char **argv) {
     vector<Node*> errors;
     Node* program = parse(tokens, errors);
     if (errors.size() > 0) {
-        print_parse_errors(path, errors);
+        print_stage_errors(path, errors, "parser");
         return 1;
     }
 
     //step 5, print the tree if asked
     if (show_tree == true) {
         print_tree(program, 0, "");
+    }
+
+    //step 6, check the tree for mistakes in meaning
+    check(program, errors);
+    if (errors.size() > 0) {
+        print_stage_errors(path, errors, "checker");
+        return 1;
     }
     return 0;
 }

@@ -10,3 +10,4 @@ void open_level();
 void close_level();
 Node* declare_name(string name, Node* node);
 Node* find_name(string name);
+void check(Node* program, vector<Node*> &errors);
