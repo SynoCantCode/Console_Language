@@ -1,4 +1,5 @@
 #include "checker.hpp"
+#include <algorithm>
 // who calls who
 // check -> check_statement -> check_declare
 // check_declare asks type_of for the type of the right side then compares then adds the name with declare_name
@@ -6,6 +7,13 @@
 // type_of calls find_name whenever its handed a name
 // type_of hands a front symbol like -hp to type_of_unary which calls type_of for its one side
 // check_declare and check_assign call check_range to see a typed number isnt too big for its spot
+// check first adds every functions name to the list then checks each line
+// check_function opens a level then adds the inputs as names then hands each inside line to check_statement then closes the level
+// check_function asks always_returns whether every path through the function reaches a return
+// check_return compares the returned value with what current_function promised
+// type_of hands a call like add(1, 2) to type_of_call which finds the function and checks the inputs against its first line
+// check_for is the same but opens its level first so its own variable like i lives inside it
+// check_if and check_while check the condition then open_level then hand each inside line back to check_statement then close_level
 // type_fits asks can this value go into this spot and shared_type asks what one type do two sides share
 // type_of hands a binary like hp + 1 to type_of_binary which calls type_of for each side then works out the result from the operator
 //im checking it...
@@ -23,6 +31,9 @@ vector<Symbol> symbols;
 
 // how deep the checker is right now
 int checker_level = 0;
+
+// the function the checker is inside right now or nullptr when its not in one
+Node* current_function = nullptr;
 
 // going into a block like a function or an if
 void open_level() {
@@ -88,6 +99,8 @@ void add_error(string message, int line) {
 Node* int_type = make_node(NodeKind::Type, "int", 0);
 Node* float_type = make_node(NodeKind::Type, "float", 0);
 Node* bool_type = make_node(NodeKind::Type, "bool", 0);
+Node* str_type = make_node(NodeKind::Type, "str", 0);
+Node* char_type = make_node(NodeKind::Type, "char", 0);
 
 // are two types the same type
 bool same_type(Node* a, Node* b) {
@@ -198,6 +211,57 @@ Node* type_of_unary(Node* node) {
     return pointer;
 }
 
+// promise bc type_of_call uses it and its written further down
+void check_range(Node* target, Node* value);
+
+// works out the type of a call like add(1, 2) by checking it against the functions first line
+Node* type_of_call(Node* node) {
+    // every input gets its own type worked out first which also catches mistakes inside the inputs
+    vector<Node*> input_types;
+    for (size_t i = 0; i < node->children.size(); i = i + 1) {
+        input_types.push_back(type_of(node->children[i]));
+    }
+
+    // what is being called
+    Node* called = node->left;
+    if (called->kind != NodeKind::Name) {
+        // calls through a field like enemy.hit() come with classes
+        return nullptr;
+    }
+    Node* function = find_name(called->text);
+    if (function == nullptr) {
+        add_error(called->text + " is not declared", node->line);
+        return nullptr;
+    }
+    if (function->kind != NodeKind::Function) {
+        add_error(called->text + " is not a function", node->line);
+        return nullptr;
+    }
+
+    // the right number of inputs
+    Node* wanted = function->right;
+    if (wanted->children.size() != node->children.size()) {
+        add_error(called->text + " needs " + to_string(wanted->children.size()) + " inputs but got " + to_string(node->children.size()), node->line);
+        return function->left;
+    }
+
+    // each input has to fit the spot the function gave it
+    for (size_t i = 0; i < node->children.size(); i = i + 1) {
+        Node* spot_type = wanted->children[i]->left;
+        if (input_types[i] == nullptr) {
+            continue;
+        }
+        if (type_fits(spot_type, input_types[i]) == false) {
+            add_error("input " + to_string(i + 1) + " of " + called->text + ": can't put " + type_name(input_types[i]) + " into " + type_name(spot_type), node->line);
+        } else {
+            check_range(spot_type, node->children[i]);
+        }
+    }
+
+    // the calls type is what the function promised to give back
+    return function->left;
+}
+
 // works out the type of a value with an operator in the middle like hp + 1 or hp > 0
 Node* type_of_binary(Node* node) {
     Node* left_type = type_of(node->left);
@@ -236,6 +300,12 @@ Node* type_of_binary(Node* node) {
         return nullptr;
     }
 
+    // joining text is a library function not an operator
+    if (same_type(shared, str_type) == true) {
+        add_error("can't do math with str", node->line);
+        return nullptr;
+    }
+
     // math gives the type its sides share
     return shared;
 }
@@ -257,6 +327,11 @@ Node* type_of(Node* node) {
             add_error(node->text + " is not declared", node->line);
             return nullptr;
         }
+        // a functions name by itself isnt a value
+        if (found->kind == NodeKind::Function) {
+            add_error(node->text + " is a function so it needs ( ) to call it", node->line);
+            return nullptr;
+        }
         // the type is on the left of the node that declared it
         return found->left;
     }
@@ -266,12 +341,26 @@ Node* type_of(Node* node) {
         return bool_type;
     }
 
+    // text in double quotes like "hero"
+    if (node->kind == NodeKind::String) {
+        return str_type;
+    }
+
+    // one character in single quotes like 'a'
+    if (node->kind == NodeKind::Character) {
+        return char_type;
+    }
+
     if (node->kind == NodeKind::Binary) {
         return type_of_binary(node);
     }
 
     if (node->kind == NodeKind::Unary) {
         return type_of_unary(node);
+    }
+
+    if (node->kind == NodeKind::Call) {
+        return type_of_call(node);
     }
 
     // kinds we havent added yet
@@ -424,6 +513,162 @@ void check_assign(Node* node) {
     }
 }
 
+// promise bc the block workers and the boss call each other
+void check_statement(Node* node);
+
+// the condition of an if or while has to be true or false
+void check_condition(Node* condition) {
+    Node* type = type_of(condition);
+    // nullptr means the type is unknown and its mistake is already recorded
+    if (type != nullptr && same_type(type, bool_type) == false) {
+        add_error("the condition needs true or false but this is " + type_name(type), condition->line);
+    }
+}
+
+// checks a while block
+void check_while(Node* node) {
+    check_condition(node->left);
+
+    // names made inside only exist inside
+    open_level();
+    for (size_t i = 0; i < node->children.size(); i = i + 1) {
+        check_statement(node->children[i]);
+    }
+    close_level();
+}
+
+// checks an if block which is a list of branches
+void check_if(Node* node) {
+    for (size_t b = 0; b < node->children.size(); b = b + 1) {
+        Node* branch = node->children[b];
+
+        // else has no condition
+        if (branch->left != nullptr) {
+            check_condition(branch->left);
+        }
+
+        // each branch gets its own level so its names dont leak into the next branch
+        open_level();
+        for (size_t i = 0; i < branch->children.size(); i = i + 1) {
+            check_statement(branch->children[i]);
+        }
+        close_level();
+    }
+}
+
+// checks a for block
+void check_for(Node* node) {
+    // the level opens first so the fors own variable like i lands inside it
+    open_level();
+
+    // the start like int i = 0 and the step like i = i + 1 are normal lines
+    Node* parts = node->right;
+    check_statement(parts->left);
+    // the check like i < 10 can see i
+    check_condition(node->left);
+    check_statement(parts->right);
+
+    for (size_t i = 0; i < node->children.size(); i = i + 1) {
+        check_statement(node->children[i]);
+    }
+    close_level();
+}
+
+// do these lines reach a return no matter which way the ifs go
+bool always_returns(vector<Node*> &lines) {
+    for (size_t i = 0; i < lines.size(); i = i + 1) {
+        Node* line = lines[i];
+        if (line->kind == NodeKind::Return) {
+            return true;
+        }
+        if (line->kind == NodeKind::If) {
+            // an if only counts when it has an else and every branch returns
+            Node* last_branch = line->children.back();
+            bool has_else = last_branch->left == nullptr;
+            bool every_branch_returns = true;
+            for (size_t b = 0; b < line->children.size(); b = b + 1) {
+                if (always_returns(line->children[b]->children) == false) {
+                    every_branch_returns = false;
+                }
+            }
+            if (has_else == true && every_branch_returns == true) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+// checks a whole function from its inputs to its last line
+void check_function(Node* node) {
+    if (checker_level != 0) {
+        add_error("a function can't be inside another function or block", node->line);
+    }
+
+    // the return lines inside need to know which function theyre in
+    current_function = node;
+    open_level();
+
+    // the inputs are names the lines inside can use
+    Node* inputs = node->right;
+    for (size_t i = 0; i < inputs->children.size(); i = i + 1) {
+        Node* input = inputs->children[i];
+        Node* problem = declare_name(input->text, input);
+        if (problem != nullptr) {
+            checker_errors.push_back(problem);
+        }
+    }
+
+    for (size_t i = 0; i < node->children.size(); i = i + 1) {
+        check_statement(node->children[i]);
+    }
+
+    // a function that gives something back has to return on every path
+    Node* promised = node->left;
+    bool gives_nothing = promised->text == "void" && promised->left == nullptr;
+    if (gives_nothing == false && always_returns(node->children) == false) {
+        add_error("this function gives " + type_name(promised) + " but it can end without a return", node->line);
+    }
+
+    close_level();
+    current_function = nullptr;
+}
+
+// checks a return line against what the function its in promised to give back
+void check_return(Node* node) {
+    if (current_function == nullptr) {
+        add_error("return can only be inside a function", node->line);
+        return;
+    }
+
+    Node* promised = current_function->left;
+    bool gives_nothing = promised->text == "void" && promised->left == nullptr;
+
+    // a plain return with no value
+    if (node->left == nullptr) {
+        if (gives_nothing == false) {
+            add_error("this function gives " + type_name(promised) + " so return needs a value", node->line);
+        }
+        return;
+    }
+
+    if (gives_nothing == true) {
+        add_error("this function gives nothing so return can't have a value", node->line);
+        return;
+    }
+
+    Node* value_type = type_of(node->left);
+    // nullptr means the type is unknown and its mistake is already recorded
+    if (value_type == nullptr) {
+        return;
+    }
+    if (type_fits(promised, value_type) == false) {
+        add_error("can't return " + type_name(value_type) + " from a function that gives " + type_name(promised), node->line);
+    } else {
+        check_range(promised, node->left);
+    }
+}
+
 // checks one line by handing it to the right worker
 void check_statement(Node* node) {
     switch (node->kind) {
@@ -433,10 +678,34 @@ void check_statement(Node* node) {
         case NodeKind::Assign:
             check_assign(node);
             break;
+        case NodeKind::If:
+            check_if(node);
+            break;
+        case NodeKind::While:
+            check_while(node);
+            break;
+        case NodeKind::For:
+            check_for(node);
+            break;
+        case NodeKind::Function:
+            check_function(node);
+            break;
+        case NodeKind::Return:
+            check_return(node);
+            break;
+        case NodeKind::Call:
+            // a call on its own line like draw(hp) still gets checked and what it gives back is dropped
+            type_of(node);
+            break;
         default:
             // kinds we havent added yet
             break;
     }
+}
+
+// for sorting the mistakes so the earliest line comes first
+bool earlier_line(Node* a, Node* b) {
+    return a->line < b->line;
 }
 
 // the start of the checker which takes the parsers tree and fills errors with the mistakes it finds
@@ -444,9 +713,24 @@ void check(Node* program, vector<Node*> &errors) {
     symbols.clear();
     checker_level = 0;
     checker_errors.clear();
+    current_function = nullptr;
 
+    // first pass: every functions name goes in the list so they can be called from anywhere in the file
+    for (size_t i = 0; i < program->children.size(); i = i + 1) {
+        Node* line = program->children[i];
+        if (line->kind == NodeKind::Function) {
+            Node* problem = declare_name(line->text, line);
+            if (problem != nullptr) {
+                checker_errors.push_back(problem);
+            }
+        }
+    }
+
+    // second pass: the real check
     for (size_t i = 0; i < program->children.size(); i = i + 1) {
         check_statement(program->children[i]);
     }
+    // the first pass can find a mistake on a later line before the second pass finds an earlier one
+    stable_sort(checker_errors.begin(), checker_errors.end(), earlier_line);
     errors = checker_errors;
 }
