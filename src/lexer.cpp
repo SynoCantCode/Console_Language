@@ -9,7 +9,7 @@
 // symbols, the two character ones go first so a double equals isn't read as two single equals
 const vector<string> SYMBOLS = {
     // two characters
-    "==", "!=", "<=", ">=", "++", "--", "+=", "-=", "*=", "/=", "..",
+    "==", "!=", "<=", ">=", "++", "--", "+=", "-=", "*=", "/=", "..", "::",
     // one character
     "=", "+", "-", "*", "/", "%", "<", ">",
     "(", ")", "[", "]", "{", "}",

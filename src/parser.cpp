@@ -1041,6 +1041,17 @@ Node* read_value_endings(Node* value) {
             Node* field = make_node(NodeKind::Field, name.text, name.line);
             field->left = value;
             value = field;
+        } else if (is_symbol("::") == true) {
+            // one choice of an enum like State::Walk
+            take();
+            Token name = current_token();
+            if (name.kind != TokenKind::Name) {
+                return make_node(NodeKind::Error, "expected a choice name", name.line);
+            }
+            take();
+            Node* choice = make_node(NodeKind::Choice, name.text, name.line);
+            choice->left = value;
+            value = choice;
         } else if (is_symbol("[") == true) {
             // an item like scores[3]
             Token bracket = take();

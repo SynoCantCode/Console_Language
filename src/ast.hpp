@@ -45,6 +45,7 @@ enum class NodeKind {
     This,
     Undefined,
     Cast,
+    Choice,
 };
 
 //one node of the tree

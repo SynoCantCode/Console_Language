@@ -78,6 +78,7 @@ string node_kind_name(NodeKind kind) {
         case NodeKind::This:    return "This";
         case NodeKind::Undefined: return "Undefined";
         case NodeKind::Cast:    return "Cast";
+        case NodeKind::Choice:  return "Choice";
 
     }
     return "?";
